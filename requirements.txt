@@ -1,9 +1,9 @@
 streamlit
-numpy
 pandas
-matplotlib
-scikit-learn
-yfinance
+numpy
 plotly
-tensorflow
-keras
+joblib
+scikit-learn
+xgboost
+statsmodels
+matplotlib

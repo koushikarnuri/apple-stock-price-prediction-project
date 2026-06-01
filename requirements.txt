@@ -5,3 +5,5 @@ matplotlib
 scikit-learn
 yfinance
 plotly
+tensorflow
+keras

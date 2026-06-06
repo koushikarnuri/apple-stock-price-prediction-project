@@ -1,4 +1,10 @@
 import streamlit as st
+
+st.set_page_config(
+    page_title="Apple Stock Price Prediction Dashboard",
+    layout="wide"
+)
+
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -6,7 +12,6 @@ import joblib
 from tensorflow.keras.models import load_model
 from datetime import timedelta
 from sklearn.preprocessing import MinMaxScaler
-
 # --- 1. Define Model and Data Paths ---
 arima_filename = 'arima_model.joblib'
 sarima_filename = 'sarima_model.joblib'

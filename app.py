@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 
 st.set_page_config(
@@ -12,172 +13,237 @@ import joblib
 from tensorflow.keras.models import load_model
 from datetime import timedelta
 from sklearn.preprocessing import MinMaxScaler
-# --- 1. Define Model and Data Paths ---
-arima_filename = 'arima_model.joblib'
-sarima_filename = 'sarima_model.joblib'
-rf_filename = 'random_forest_model.joblib'
-xgb_filename = 'xgboost_model.joblib'
-lstm_model_filename = 'lstm_model.h5'
-AAPL_DATA_FILE = 'AAPL.csv'
 
-# --- 2. Load Models ---
+# -----------------------
+# FILES
+# -----------------------
+ARIMA_FILE = "arima_model.joblib"
+SARIMA_FILE = "sarima_model.joblib"
+RF_FILE = "random_forest_model.joblib"
+XGB_FILE = "xgboost_model.joblib"
+LSTM_FILE = "lstm_model.h5"
+DATA_FILE = "AAPL.csv"
+
+LOOKBACK = 60
+
+# -----------------------
+# LOAD MODELS
+# -----------------------
 @st.cache_resource
-def load_all_models():
-    """Loads all trained models."""
-    try:
-        arima_model = joblib.load(arima_filename)
-        sarima_model = joblib.load(sarima_filename)
-        rf_model = joblib.load(rf_filename)
-        xgb_model = joblib.load(xgb_filename)
-        lstm_model = load_model(lstm_model_filename)
+def load_models():
+    return {
+        "ARIMA": joblib.load(ARIMA_FILE),
+        "SARIMA": joblib.load(SARIMA_FILE),
+        "Random Forest": joblib.load(RF_FILE),
+        "XGBoost": joblib.load(XGB_FILE),
+        "LSTM": load_model(LSTM_FILE)
+    }
 
-        return {
-            'ARIMA': arima_model,
-            'SARIMA': sarima_model,
-            'Random Forest': rf_model,
-            'XGBoost': xgb_model,
-            'LSTM': lstm_model,
-        }
-    except Exception as e:
-        st.error(f"Error loading models. Please ensure all model files ({arima_filename}, {sarima_filename}, {rf_filename}, {xgb_filename}, {lstm_model_filename}) and {AAPL_DATA_FILE} are in the same directory. Error: {e}")
-        st.stop()
-
-models = load_all_models()
-
-# --- 3. Load Original Data and Perform Feature Engineering ---
+# -----------------------
+# LOAD DATA
+# -----------------------
 @st.cache_data
-def load_and_preprocess_data():
-    df_raw = pd.read_csv(AAPL_DATA_FILE)
-    df_raw["Date"] = pd.to_datetime(df_raw["Date"], dayfirst=True)
-    df_raw = df_raw.sort_values("Date")
-    df_raw.set_index("Date", inplace=True)
+def load_data():
+    df = pd.read_csv(DATA_FILE)
 
-    # Feature Engineering
-    df_raw["MA07"] = df_raw["Close"].rolling(7).mean()
-    df_raw["MA30"] = df_raw["Close"].rolling(30).mean()
-    df_raw["Volatility"] = df_raw["Close"].rolling(10).std()
-    df_raw["Daily_Returns"] = df_raw["Close"].pct_change()
-    df_raw.dropna(inplace=True) # Drop NaNs introduced by rolling features
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"])
+        df = df.sort_values("Date")
+        df.set_index("Date", inplace=True)
 
-    return df_raw
+    df["MA07"] = df["Close"].rolling(7).mean()
+    df["MA30"] = df["Close"].rolling(30).mean()
+    df["Volatility"] = df["Close"].rolling(10).std()
+    df["Daily_Returns"] = df["Close"].pct_change()
 
-df = load_and_preprocess_data()
+    df.dropna(inplace=True)
 
-# Constants from notebook
-LOOKBACK = 60 # Lookback for LSTM model
+    return df
 
-# Re-initialize and fit scaler for LSTM within the app
+models = load_models()
+df = load_data()
+
+# -----------------------
+# SCALER
+# -----------------------
 @st.cache_resource
-def get_lstm_scaler(data):
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    scaler.fit(data[['Close']].values)
+def get_scaler():
+    scaler = MinMaxScaler()
+    scaler.fit(df[["Close"]])
     return scaler
 
-lstm_scaler = get_lstm_scaler(df)
+scaler = get_scaler()
 
-# --- Model Performance Data ---
-model_performance_df = pd.DataFrame({
-    'Model': ['ARIMA', 'SARIMA', 'Random Forest', 'XGBoost', 'LSTM'],
-    'RMSE': [33.386831, 26.726207, 32.313498, 32.540103, 8.712613],
-    'MAPE': [0.115383, 0.105267, 0.090483, 0.091569, 0.034375]
+# -----------------------
+# HEADER
+# -----------------------
+st.title("🍎 Apple Stock Price Prediction Dashboard")
+
+# -----------------------
+# PERFORMANCE TABLE
+# -----------------------
+performance_df = pd.DataFrame({
+    "Model": ["ARIMA","SARIMA","Random Forest","XGBoost","LSTM"],
+    "RMSE": [33.38,26.72,32.31,32.54,8.71],
+    "MAPE": [0.1153,0.1052,0.0904,0.0915,0.0343]
 })
 
-# Sort for better visualization and identifying the best model
-model_performance_df = model_performance_df.sort_values(by='RMSE', ascending=True)
+st.subheader("Model Performance")
 
-# --- Streamlit UI ---
-st.title("Apple Stock Price Prediction Dashboard")
+st.dataframe(performance_df)
 
-# --- Model Performance Visualization ---
-st.subheader("Model Performance Comparison")
-
-# Combined RMSE and MAPE Bar Chart
-fig = go.Figure()
-
-# Add RMSE bars
-fig.add_trace(go.Bar(
-    x=model_performance_df['Model'],
-    y=model_performance_df['RMSE'],
-    name='RMSE',
-    marker_color='blue'
-))
-
-# Add MAPE bars
-fig.add_trace(go.Bar(
-    x=model_performance_df['Model'],
-    y=model_performance_df['MAPE'] * 100, # Multiply by 100 for percentage
-    name='MAPE (%)',
-    marker_color='darkblue'
-))
-
-fig.update_layout(
-    barmode='group',
-    title_text='Model Performance: RMSE and MAPE',
-    xaxis_title='Model',
-    yaxis_title='Metric Value',
-    height=500
-)
-st.plotly_chart(fig, use_container_width=True)
-
-st.write("### All Model Metrics:")
-st.dataframe(model_performance_df.round(4))
-
-best_model = model_performance_df.iloc[0]
-st.write(
-    f"##### The best performing model (based on lowest RMSE and MAPE) is **{best_model['Model']}** "
-    f"with RMSE: {best_model['RMSE']:.2f} and MAPE: {best_model['MAPE']:.4f}"
-)
-
+# -----------------------
+# SIDEBAR
+# -----------------------
 st.sidebar.header("Prediction Settings")
-selected_model_name = st.sidebar.selectbox(
-    "Select Model for Forecast:",
-    ('ARIMA', 'SARIMA', 'Random Forest', 'XGBoost', 'LSTM')
-)
-prediction_horizon = st.sidebar.slider("Prediction Horizon (days):", 1, 90, 30)
 
-st.write(f"### Using {selected_model_name} to predict the next {prediction_horizon} days of Apple Stock Prices")
-
-# --- 5. Prediction Logic ---
-forecast_prices = None
-conf_int = None
-
-# Create future dates based on the last date in the preprocessed DataFrame
-future_dates = pd.date_range(
-    start=df.index[-1] + timedelta(days=1),
-    periods=prediction_horizon,
-    freq="B" # Business days
+selected_model = st.sidebar.selectbox(
+    "Select Model",
+    ["ARIMA","SARIMA","Random Forest","XGBoost","LSTM"]
 )
 
-# Get the last 100 historical prices to display with the forecast
-historical_prices_for_plot = df["Close"].tail(100)
+forecast_days = st.sidebar.slider(
+    "Forecast Days",
+    1,
+    90,
+    30
+)
 
+# -----------------------
+# FORECAST BUTTON
+# -----------------------
 if st.button("Generate Forecast"):
-    with st.spinner(f"Generating forecast using {selected_model_name}..."):
-        if selected_model_name == 'ARIMA':
-            forecast_res = models['ARIMA'].get_forecast(steps=prediction_horizon)
-            forecast_prices = forecast_res.predicted_mean
-            conf_int = forecast_res.conf_int()
 
-        elif selected_model_name == 'SARIMA':
-            forecast_res = models['SARIMA'].get_forecast(steps=prediction_horizon)
-            forecast_prices = forecast_res.predicted_mean
-            conf_int = forecast_res.conf_int()
+    forecast = None
 
-        elif selected_model_name in ['Random Forest', 'XGBoost']:
-            ml_features = ['Open', 'High', 'Low', 'Volume', 'MA07', 'MA30', 'Volatility', 'Daily_Returns']
-            current_ml_df = df[ml_features].copy()
+    future_dates = pd.date_range(
+        start=df.index[-1] + timedelta(days=1),
+        periods=forecast_days,
+        freq="B"
+    )
 
-            # Repeat the last known feature set for simplicity over the prediction horizon
-            last_known_features = current_ml_df.iloc[-1].to_dict()
-            future_ml_features_df = pd.DataFrame([last_known_features] * prediction_horizon, index=future_dates)
+    if selected_model == "ARIMA":
 
-            if selected_model_name == 'Random Forest':
-                forecast_prices = models['Random Forest'].predict(future_ml_features_df)
-            else: # XGBoost
-                forecast_prices = models['XGBoost'].predict(future_ml_features_df)
+        res = models["ARIMA"].get_forecast(steps=forecast_days)
+        forecast = pd.Series(
+            res.predicted_mean,
+            index=future_dates
+        )
 
-            forecast_prices = pd.Series(forecast_prices, index=future_dates)
-            conf_int = None 
+    elif selected_model == "SARIMA":
 
-        elif selected_model_name == 'LSTM':
-            scaled_close_data = lstm
+        res = models["SARIMA"].get_forecast(steps=forecast_days)
+        forecast = pd.Series(
+            res.predicted_mean,
+            index=future_dates
+        )
+
+    elif selected_model in ["Random Forest","XGBoost"]:
+
+        features = [
+            "Open",
+            "High",
+            "Low",
+            "Volume",
+            "MA07",
+            "MA30",
+            "Volatility",
+            "Daily_Returns"
+        ]
+
+        last_row = df[features].iloc[-1]
+
+        future_df = pd.DataFrame(
+            [last_row] * forecast_days,
+            columns=features,
+            index=future_dates
+        )
+
+        if selected_model == "Random Forest":
+            preds = models["Random Forest"].predict(future_df)
+        else:
+            preds = models["XGBoost"].predict(future_df)
+
+        forecast = pd.Series(preds, index=future_dates)
+
+    elif selected_model == "LSTM":
+
+        scaled = scaler.transform(df[["Close"]])
+
+        batch = scaled[-LOOKBACK:]
+        batch = batch.reshape((1, LOOKBACK, 1))
+
+        preds = []
+
+        for _ in range(forecast_days):
+
+            pred = models["LSTM"].predict(
+                batch,
+                verbose=0
+            )[0]
+
+            preds.append(pred)
+
+            batch = np.append(
+                batch[:,1:,:],
+                [[pred]],
+                axis=1
+            )
+
+        preds = np.array(preds)
+
+        forecast = scaler.inverse_transform(
+            preds.reshape(-1,1)
+        ).flatten()
+
+        forecast = pd.Series(
+            forecast,
+            index=future_dates
+        )
+
+    st.success("Forecast Generated")
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=df.index[-100:],
+            y=df["Close"].tail(100),
+            mode="lines",
+            name="Historical"
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=forecast.index,
+            y=forecast.values,
+            mode="lines",
+            name="Forecast"
+        )
+    )
+
+    fig.update_layout(
+        title=f"{selected_model} Forecast",
+        xaxis_title="Date",
+        yaxis_title="Price"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    result_df = pd.DataFrame({
+        "Date": forecast.index,
+        "Predicted Price": forecast.values
+    })
+
+    st.subheader("Forecast Values")
+
+    st.dataframe(result_df)
+
+    st.download_button(
+        "Download CSV",
+        result_df.to_csv(index=False),
+        "forecast.csv",
+        "text/csv"
+    )
+```

@@ -86,7 +86,6 @@ model_performance_df = pd.DataFrame({
 model_performance_df = model_performance_df.sort_values(by='RMSE', ascending=True)
 
 # --- Streamlit UI ---
-st.set_page_config(layout="wide")
 st.title("Apple Stock Price Prediction Dashboard")
 
 # --- Model Performance Visualization ---

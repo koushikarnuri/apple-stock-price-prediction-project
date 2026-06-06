@@ -1,5 +1,7 @@
 # Apple Stock Price Prediction — 30-Day Forecasting
 
+🚀 Live App: https://apple-stock-price-prediction-project-fwpa9gi6st5kc3zwu9wjmy.streamlit.app/
+
 ## Overview
 A time-series forecasting system to predict Apple (AAPL) stock prices
 30 days ahead using classical, machine learning, and deep learning models.
